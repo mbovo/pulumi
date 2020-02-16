@@ -46,3 +46,16 @@ func notYetImplemented(v interface{}) hcl.Diagnostics {
 func malformedToken(token string, sourceRange hcl.Range) *hcl.Diagnostic {
 	return errorf(sourceRange, "malformed token %v: expected \"pkg:module:member\"", token)
 }
+
+func circularReference(stack []hclsyntax.Node, referent hclsyntax.Node) *hcl.Diagnostic {
+	// TODO(pdg): stack trace
+	return errorf(referent.Range(), "circular reference to node")
+}
+
+func unknownPackage(pkg string, tokenRange hcl.Range) *hcl.Diagnostic {
+	return errorf(tokenRange, "unknown package %s", pkg)
+}
+
+func unknownResourceType(token string, tokenRange hcl.Range) *hcl.Diagnostic {
+	return errorf(tokenRange, "unknown resource type %s", token)
+}

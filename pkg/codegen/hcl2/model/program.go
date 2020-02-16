@@ -8,8 +8,19 @@ import (
 	"github.com/pulumi/pulumi/pkg/codegen/hcl2/syntax"
 )
 
+type bindState int
+
+const (
+	unbound = 0
+	binding = 1
+	bound   = 2
+)
+
 type Node interface {
 	SyntaxNode() hclsyntax.Node
+
+	getState() bindState
+	setState(s bindState)
 
 	isNode()
 }

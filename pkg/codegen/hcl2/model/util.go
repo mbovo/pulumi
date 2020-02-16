@@ -28,6 +28,28 @@ func (ss stringSet) sortedValues() []string {
 	return values
 }
 
+type nodeSet map[Node]struct{}
+
+func (ns nodeSet) add(n Node) {
+	ns[n] = struct{}{}
+}
+
+func (ns nodeSet) has(n Node) bool {
+	_, ok := ns[n]
+	return ok
+}
+
+type typeSet map[Type]struct{}
+
+func (ts typeSet) add(t Type) {
+	ts[t] = struct{}{}
+}
+
+func (ts typeSet) has(t Type) bool {
+	_, ok := ts[t]
+	return ok
+}
+
 func sourceOrderBlocks(blocks []*hclsyntax.Block) []*hclsyntax.Block {
 	sort.Slice(blocks, func(i, j int) bool {
 		return blocks[i].Range().Start.Byte < blocks[j].Range().Start.Byte
@@ -44,6 +66,14 @@ func sourceOrderAttributes(attrMap map[string]*hclsyntax.Attribute) []*hclsyntax
 		return attrs[i].Range().Start.Byte < attrs[j].Range().End.Byte
 	})
 	return attrs
+}
+
+func sourceOrderNodes(nodes []Node) []Node {
+	sort.Slice(nodes, func(i, j int) bool {
+		ir, jr := nodes[i].SyntaxNode().Range(), nodes[j].SyntaxNode().Range()
+		return ir.Filename < jr.Filename || ir.Start.Byte < jr.Start.Byte
+	})
+	return nodes
 }
 
 func decomposeToken(tok string, sourceRange hcl.Range) (string, string, string, hcl.Diagnostics) {

@@ -2,12 +2,16 @@ package model
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // Type represents a datatype in the Pulumi Schema. Types created by this package are identical if they are
 // equal values.
 type Type interface {
+	AssignableFrom(src Type) bool
 	String() string
 
 	isType()
@@ -24,6 +28,16 @@ const (
 	assetType   primitiveType = 6
 	anyType     primitiveType = 7
 )
+
+func (t primitiveType) AssignableFrom(src Type) bool {
+	if t == anyType {
+		return true
+	}
+
+	// TODO(pdg): allow conversions from token types?
+
+	return src == t
+}
 
 func (t primitiveType) String() string {
 	switch t {
@@ -79,46 +93,273 @@ var (
 type OptionalType struct {
 	// ElementType is the non-optional element type.
 	ElementType Type
+
+	s string
+}
+
+// The set of optional types, indexed by element type.
+var optionalTypes map[Type]*OptionalType
+
+// NewOptionalType creates a new optional type with the given element type. If the element type is itself an optional
+// type, the result is the element type.
+func NewOptionalType(elementType Type) *OptionalType {
+	if t, ok := elementType.(*OptionalType); ok {
+		return t
+	}
+	if t, ok := optionalTypes[elementType]; ok {
+		return t
+	}
+
+	t := &OptionalType{ElementType: elementType}
+	optionalTypes[elementType] = t
+	return t
+}
+
+func (t *OptionalType) AssignableFrom(src Type) bool {
+	return src == nil || src == t || t.ElementType.AssignableFrom(src)
 }
 
 func (t *OptionalType) String() string {
-	return fmt.Sprintf("optional(%v)", t.ElementType)
+	if t.s == "" {
+		t.s = fmt.Sprintf("optional(%v)", t.ElementType)
+	}
+	return t.s
 }
 
 func (t *OptionalType) isType() {}
 
 // OutputType represents eventual values that carry dependency information (e.g. resource output properties)
 type OutputType struct {
-	// ElementType is tne element type of the output.
+	// ElementType is the element type of the output.
 	ElementType Type
+
+	s string
+}
+
+// The set of output types, indexed by element type.
+var outputTypes map[Type]*OutputType
+
+// NewOutputType creates a new output type with the given element type after replacing any output or promise types
+// within the element type with their respective element types.
+func NewOutputType(elementType Type) *OutputType {
+	elementType = ResolveOutputs(elementType)
+	if t, ok := outputTypes[elementType]; ok {
+		return t
+	}
+
+	t := &OutputType{ElementType: elementType}
+	outputTypes[elementType] = t
+	return t
+}
+
+func (t *OutputType) AssignableFrom(src Type) bool {
+	if src, ok := src.(*PromiseType); ok {
+		return t.ElementType.AssignableFrom(src.ElementType)
+	}
+	return src == t || t.ElementType.AssignableFrom(src)
 }
 
 func (t *OutputType) String() string {
-	return fmt.Sprintf("output(%v)", t.ElementType)
+	if t.s == "" {
+		t.s = fmt.Sprintf("output(%v)", t.ElementType)
+	}
+	return t.s
 }
 
 func (t *OutputType) isType() {}
 
+// ResolveOutputsType represents a type where all nested output and promise types are replaced with their element type.
+// This type is used to wrap TokenTypes in order to prevent information loss.
+type ResolveOutputsType struct {
+	ElementType *TokenType
+
+	resolvedUnderlyingType Type
+
+	s string
+}
+
+var resolveOutputsTypes map[*TokenType]*ResolveOutputsType
+
+func ResolveOutputs(t Type) Type {
+	switch t := t.(type) {
+	case *OptionalType:
+		return NewOptionalType(ResolveOutputs(t.ElementType))
+	case *OutputType:
+		return t.ElementType
+	case *PromiseType:
+		return t.ElementType
+	case *MapType:
+		return NewMapType(ResolveOutputs(t.ElementType))
+	case *ArrayType:
+		return NewArrayType(ResolveOutputs(t.ElementType))
+	case *UnionType:
+		elementTypes := make([]Type, len(t.ElementTypes))
+		for i, t := range t.ElementTypes {
+			elementTypes[i] = ResolveOutputs(t)
+		}
+		return NewUnionType(elementTypes[0], elementTypes[1], elementTypes[2:]...)
+	case *ObjectType:
+		properties := map[string]Type{}
+		for k, t := range t.Properties {
+			properties[k] = ResolveOutputs(t)
+		}
+		return NewObjectType(properties)
+	case *TokenType:
+		rt, ok := resolveOutputsTypes[t]
+		if !ok {
+			resolveOutputsTypes[t] = &ResolveOutputsType{
+				ElementType:            t,
+				resolvedUnderlyingType: ResolveOutputs(t.UnderlyingType),
+			}
+		}
+		return rt
+	default:
+		return t
+	}
+}
+
+func (t *ResolveOutputsType) AssignableFrom(src Type) bool {
+	return src == t || t.resolvedUnderlyingType.AssignableFrom(src)
+}
+
+func (t *ResolveOutputsType) String() string {
+	if t.s == "" {
+		t.s = fmt.Sprintf("resolveOutputs(%v)", t.ElementType)
+	}
+	return t.s
+}
+
+func (t *ResolveOutputsType) isType() {}
+
 // PromiseType represents eventual values that do not carry dependency information (e.g invoke return values)
 type PromiseType struct {
-	// ElementType is tne element type of the promise.
+	// ElementType is the element type of the promise.
 	ElementType Type
+
+	s string
+}
+
+// The set of promise types, indexed by element type.
+var promiseTypes map[Type]*PromiseType
+
+// NewPromiseType creates a new promise type with the given element type after replacing any promise types within
+// the element type with their respective element types.
+func NewPromiseType(elementType Type) *PromiseType {
+	elementType = ResolvePromises(elementType)
+	if t, ok := promiseTypes[elementType]; ok {
+		return t
+	}
+
+	t := &PromiseType{ElementType: elementType}
+	promiseTypes[elementType] = t
+	return t
+}
+
+func (t *PromiseType) AssignableFrom(src Type) bool {
+	return src == t || t.ElementType.AssignableFrom(src)
 }
 
 func (t *PromiseType) String() string {
-	return fmt.Sprintf("promise(%v)", t.ElementType)
+	if t.s == "" {
+		t.s = fmt.Sprintf("promise(%v)", t.ElementType)
+	}
+	return t.s
 }
 
 func (t *PromiseType) isType() {}
+
+// ResolvePromisesType represents a type where all nested promise types are replaced with their element type. This type
+// is used to wrap TokenTypes in order to prevent information loss.
+type ResolvePromisesType struct {
+	ElementType *TokenType
+
+	resolvedUnderlyingType Type
+
+	s string
+}
+
+var resolvePromisesTypes map[*TokenType]*ResolvePromisesType
+
+func ResolvePromises(t Type) Type {
+	switch t := t.(type) {
+	case *OptionalType:
+		return NewOptionalType(ResolvePromises(t.ElementType))
+	case *PromiseType:
+		return t.ElementType
+	case *MapType:
+		return NewMapType(ResolvePromises(t.ElementType))
+	case *ArrayType:
+		return NewArrayType(ResolvePromises(t.ElementType))
+	case *UnionType:
+		elementTypes := make([]Type, len(t.ElementTypes))
+		for i, t := range t.ElementTypes {
+			elementTypes[i] = ResolvePromises(t)
+		}
+		return NewUnionType(elementTypes[0], elementTypes[1], elementTypes[2:]...)
+	case *ObjectType:
+		properties := map[string]Type{}
+		for k, t := range t.Properties {
+			properties[k] = ResolvePromises(t)
+		}
+		return NewObjectType(properties)
+	case *TokenType:
+		rt, ok := resolvePromisesTypes[t]
+		if !ok {
+			resolvePromisesTypes[t] = &ResolvePromisesType{
+				ElementType:            t,
+				resolvedUnderlyingType: ResolvePromises(t.UnderlyingType),
+			}
+		}
+		return rt
+	default:
+		return t
+	}
+}
+
+func (t *ResolvePromisesType) AssignableFrom(src Type) bool {
+	return src == t || t.resolvedUnderlyingType.AssignableFrom(src)
+}
+
+func (t *ResolvePromisesType) String() string {
+	if t.s == "" {
+		t.s = fmt.Sprintf("resolvePromises(%v)", t.ElementType)
+	}
+	return t.s
+}
+
+func (t *ResolvePromisesType) isType() {}
 
 // MapType represents maps from strings to particular element types.
 type MapType struct {
 	// ElementType is the element type of the map.
 	ElementType Type
+
+	s string
+}
+
+// The set of map types, indexed by element type.
+var mapTypes map[Type]*MapType
+
+// NewMapType creates a new map type with the given element type.
+func NewMapType(elementType Type) *MapType {
+	if t, ok := mapTypes[elementType]; ok {
+		return t
+	}
+
+	t := &MapType{ElementType: elementType}
+	mapTypes[elementType] = t
+	return t
+}
+
+func (t *MapType) AssignableFrom(src Type) bool {
+	return src == t
 }
 
 func (t *MapType) String() string {
-	return fmt.Sprintf("map(%v)", t.ElementType)
+	if t.s == "" {
+		t.s = fmt.Sprintf("map(%v)", t.ElementType)
+	}
+	return t.s
 }
 
 func (*MapType) isType() {}
@@ -127,26 +368,103 @@ func (*MapType) isType() {}
 type ArrayType struct {
 	// ElementType is the element type of the array.
 	ElementType Type
+
+	s string
+}
+
+func (t *ArrayType) AssignableFrom(src Type) bool {
+	return src == t
 }
 
 func (t *ArrayType) String() string {
-	return fmt.Sprintf("array(%v)", t.ElementType)
+	if t.s == "" {
+		t.s = fmt.Sprintf("array(%v)", t.ElementType)
+	}
+	return t.s
 }
 
 func (*ArrayType) isType() {}
+
+// The set of array types, indexed by element type.
+var arrayTypes map[Type]*ArrayType
+
+// NewArrayType creates a new array type with the given element type.
+func NewArrayType(elementType Type) *ArrayType {
+	if t, ok := arrayTypes[elementType]; ok {
+		return t
+	}
+
+	t := &ArrayType{ElementType: elementType}
+	arrayTypes[elementType] = t
+	return t
+}
 
 // UnionType represents values that may be any one of a specified set of types.
 type UnionType struct {
 	// ElementTypes are the allowable types for the union type.
 	ElementTypes []Type
+
+	s string
+}
+
+// The set of union types, indexed by string representation.
+var unionTypes map[string]*UnionType
+
+// NewUnionType creates a new union type with the given element types. Any element types that are union types are
+// replaced with their element types.
+func NewUnionType(type1, type2 Type, rest ...Type) *UnionType {
+	var elementTypes []Type
+	if t, ok := type1.(*UnionType); ok {
+		elementTypes = append(elementTypes, t.ElementTypes...)
+	} else {
+		elementTypes = append(elementTypes, type1)
+	}
+	if t, ok := type2.(*UnionType); ok {
+		elementTypes = append(elementTypes, t.ElementTypes...)
+	} else {
+		elementTypes = append(elementTypes, type2)
+	}
+	for _, tn := range rest {
+		if t, ok := tn.(*UnionType); ok {
+			elementTypes = append(elementTypes, t.ElementTypes...)
+		} else {
+			elementTypes = append(elementTypes, tn)
+		}
+	}
+
+	sort.Slice(elementTypes, func(i, j int) bool {
+		return elementTypes[i].String() < elementTypes[j].String()
+	})
+
+	t := &UnionType{ElementTypes: elementTypes}
+	if t, ok := unionTypes[t.String()]; ok {
+		return t
+	}
+	unionTypes[t.String()] = t
+	return t
+}
+
+func (t *UnionType) AssignableFrom(src Type) bool {
+	if src == t {
+		return true
+	}
+	for _, t := range t.ElementTypes {
+		if t.AssignableFrom(src) {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *UnionType) String() string {
-	elements := make([]string, len(t.ElementTypes))
-	for i, e := range t.ElementTypes {
-		elements[i] = e.String()
+	if t.s == "" {
+		elements := make([]string, len(t.ElementTypes))
+		for i, e := range t.ElementTypes {
+			elements[i] = e.String()
+		}
+		t.s = fmt.Sprintf("union(%s)", strings.Join(elements, ", "))
 	}
-	return fmt.Sprintf("union(%s)", strings.Join(elements, ", "))
+	return t.s
 }
 
 func (*UnionType) isType() {}
@@ -155,15 +473,50 @@ func (*UnionType) isType() {}
 type ObjectType struct {
 	// Properties records the types of the object's properties.
 	Properties map[string]Type
+
+	s string
+}
+
+// The set of object types, indexed by string representation.
+var objectTypes map[string]*ObjectType
+
+// NewObjectType creates a new object type with the given properties.
+func NewObjectType(properties map[string]Type) *ObjectType {
+	t := &ObjectType{Properties: properties}
+	if t, ok := objectTypes[t.String()]; ok {
+		return t
+	}
+	objectTypes[t.String()] = t
+	return t
+}
+
+func (t *ObjectType) AssignableFrom(src Type) bool {
+	srcObject, ok := src.(*ObjectType)
+	if !ok {
+		return false
+	}
+	if src == t {
+		return true
+	}
+	for k, dst := range t.Properties {
+		if !dst.AssignableFrom(srcObject.Properties[k]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *ObjectType) String() string {
-	var elements []string
-	for k, v := range t.Properties {
-		elements = append(elements, fmt.Sprintf("%s = %v", k, v))
-	}
+	if t.s == "" {
+		var properties []string
+		for k, v := range t.Properties {
+			properties = append(properties, fmt.Sprintf("%s = %v", k, v))
+		}
+		sort.Strings(properties)
 
-	return fmt.Sprintf("object({%s})", strings.Join(elements, ", "))
+		t.s = fmt.Sprintf("object({%s})", strings.Join(properties, ", "))
+	}
+	return t.s
 }
 
 func (*ObjectType) isType() {}
@@ -175,10 +528,33 @@ type TokenType struct {
 
 	// UnderlyingType is the underlying type named by the token.
 	UnderlyingType Type
+
+	s string
+}
+
+// The set of token types, indexed by token.
+var tokenTypes map[string]*TokenType
+
+// NewTokenType creates a new token type with the given token and underlying type.
+func NewTokenType(token string, underlyingType Type) (*TokenType, error) {
+	if _, ok := tokenTypes[token]; ok {
+		return nil, errors.Errorf("token type %s is already defined", token)
+	}
+
+	t := &TokenType{Token: token, UnderlyingType: underlyingType}
+	tokenTypes[token] = t
+	return t, nil
+}
+
+func (t *TokenType) AssignableFrom(src Type) bool {
+	return src == t || t.UnderlyingType.AssignableFrom(src)
 }
 
 func (t *TokenType) String() string {
-	return fmt.Sprintf("token(%s, %v)", t.Token, t.UnderlyingType)
+	if t.s == "" {
+		t.s = fmt.Sprintf("token(%s, %v)", t.Token, t.UnderlyingType)
+	}
+	return t.s
 }
 
 func (*TokenType) isType() {}

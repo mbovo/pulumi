@@ -1,23 +1,22 @@
 package model
 
 import (
-	"encoding/json"
 	"os"
 	"sort"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pulumi/pulumi/pkg/codegen/hcl2/syntax"
-	"github.com/pulumi/pulumi/pkg/codegen/schema"
 	"github.com/pulumi/pulumi/pkg/resource/plugin"
-	"github.com/pulumi/pulumi/pkg/tokens"
 )
 
 type binder struct {
 	host plugin.Host
 
-	packageSchemas map[string]*schema.Package
+	packageSchemas map[string]*packageSchema
 	nodes          map[string]Node
+
+	stack []hclsyntax.Node
 }
 
 func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnostics, error) {
@@ -35,7 +34,7 @@ func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnost
 
 	b := &binder{
 		host:           host,
-		packageSchemas: map[string]*schema.Package{},
+		packageSchemas: map[string]*packageSchema{},
 		nodes:          map[string]Node{},
 	}
 
@@ -54,19 +53,16 @@ func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnost
 	for _, n := range b.nodes {
 		nodes = append(nodes, n)
 	}
-	sort.Slice(nodes, func(i, j int) bool {
-		ir, jr := nodes[i].SyntaxNode().Range(), nodes[j].SyntaxNode().Range()
-		return ir.Filename < jr.Filename || ir.Start.Byte < jr.Start.Byte
-	})
+	sourceOrderNodes(nodes)
 
-	// Load referenced package schemas and bind node types.
+	// Load referenced package schemas.
 	for _, n := range nodes {
 		if err := b.loadReferencedPackageSchemas(n); err != nil {
 			return nil, nil, err
 		}
 	}
 
-	// Now bind node bodies.
+	// Now bind the nodes.
 	for _, n := range nodes {
 		diagnostics = append(diagnostics, b.bindNode(n)...)
 	}
@@ -145,67 +141,5 @@ func (b *binder) declareNode(name string, n Node) hcl.Diagnostics {
 	}
 
 	b.nodes[name] = n
-	return nil
-}
-
-func (b *binder) loadReferencedPackageSchemas(n Node) error {
-	// TODO: package versions
-	packageNames := stringSet{}
-
-	if r, ok := n.(*Resource); ok {
-		token := r.Syntax.Labels[1]
-		packageName, _, _, _ := decomposeToken(token, r.Syntax.LabelRanges[1])
-		packageNames.add(packageName)
-	}
-
-	hclsyntax.VisitAll(n.SyntaxNode(), func(node hclsyntax.Node) hcl.Diagnostics {
-		call, ok := node.(*hclsyntax.FunctionCallExpr)
-		if !ok {
-			return nil
-		}
-		token, tokenRange, ok := getInvokeToken(call)
-		if !ok {
-			return nil
-		}
-		packageName, _, _, _ := decomposeToken(token, tokenRange)
-		packageNames.add(packageName)
-		return nil
-	})
-
-	for _, name := range packageNames.sortedValues() {
-		if err := b.loadPackageSchema(name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// TODO: provider versions
-func (b *binder) loadPackageSchema(name string) error {
-	if _, ok := b.packageSchemas[name]; ok {
-		return nil
-	}
-
-	provider, err := b.host.Provider(tokens.Package(name), nil)
-	if err != nil {
-		return err
-	}
-
-	schemaBytes, err := provider.GetSchema(0)
-	if err != nil {
-		return err
-	}
-
-	var spec schema.PackageSpec
-	if err := json.Unmarshal(schemaBytes, &spec); err != nil {
-		return err
-	}
-
-	packageSchema, err := schema.ImportSpec(spec)
-	if err != nil {
-		return err
-	}
-
-	b.packageSchemas[name] = packageSchema
 	return nil
 }
