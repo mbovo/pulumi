@@ -7,7 +7,7 @@ import (
 type ConfigVariable struct {
 	Syntax *hclsyntax.Block
 
-	Type         Type
+	typ          Type
 	DefaultValue Expression
 
 	state bindState
@@ -15,6 +15,10 @@ type ConfigVariable struct {
 
 func (cv *ConfigVariable) SyntaxNode() hclsyntax.Node {
 	return cv.Syntax
+}
+
+func (cv *ConfigVariable) Type() Type {
+	return cv.typ
 }
 
 func (cv *ConfigVariable) getState() bindState {

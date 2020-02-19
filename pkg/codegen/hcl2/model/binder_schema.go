@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pulumi/pulumi/pkg/codegen/schema"
 	"github.com/pulumi/pulumi/pkg/tokens"
+	"github.com/pulumi/pulumi/pkg/util/contract"
 )
 
 type packageSchema struct {
@@ -94,4 +95,77 @@ func (b *binder) loadPackageSchema(name string) error {
 		functions: functions,
 	}
 	return nil
+}
+
+func schemaTypeToType(src schema.Type, wrapInput bool) Type {
+	var dst Type
+	switch src := src.(type) {
+	case *schema.ArrayType:
+		dst = NewArrayType(schemaTypeToType(src.ElementType, wrapInput))
+	case *schema.MapType:
+		dst = NewMapType(schemaTypeToType(src.ElementType, wrapInput))
+	case *schema.ObjectType:
+		properties := map[string]Type{}
+		for _, prop := range src.Properties {
+			t := schemaTypeToType(prop.Type, wrapInput)
+			if !prop.IsRequired {
+				t = NewOptionalType(t)
+			}
+			properties[prop.Name] = t
+		}
+		dst = NewObjectType(properties)
+	case *schema.TokenType:
+		t, ok := GetTokenType(src.Token)
+		if !ok {
+			tt, err := NewTokenType(src.Token)
+			contract.IgnoreError(err)
+			t = tt
+		}
+		dst = t
+
+		if wrapInput {
+			dst = NewUnionType(dst, NewOutputType(dst))
+		}
+		if src.UnderlyingType == nil {
+			return dst
+		}
+
+		underlyingType := schemaTypeToType(src.UnderlyingType, wrapInput)
+		return NewUnionType(dst, underlyingType)
+	case *schema.UnionType:
+		switch len(src.ElementTypes) {
+		case 0:
+			return nil
+		case 1:
+			return schemaTypeToType(src.ElementTypes[0], wrapInput)
+		default:
+			types := make([]Type, len(src.ElementTypes))
+			for i, src := range src.ElementTypes {
+				types[i] = schemaTypeToType(src, wrapInput)
+			}
+			dst = NewUnionType(types[0], types[1], types[2:]...)
+		}
+	default:
+		switch src {
+		case schema.BoolType:
+			dst = BoolType
+		case schema.IntType:
+			dst = IntType
+		case schema.NumberType:
+			dst = NumberType
+		case schema.StringType:
+			dst = StringType
+		case schema.ArchiveType:
+			dst = ArchiveType
+		case schema.AssetType:
+			dst = AssetType
+		case schema.AnyType:
+			return AnyType
+		}
+	}
+
+	if wrapInput {
+		dst = NewUnionType(dst, NewOutputType(dst))
+	}
+	return dst
 }

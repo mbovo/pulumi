@@ -18,6 +18,7 @@ const (
 
 type Node interface {
 	SyntaxNode() hclsyntax.Node
+	Type() Type
 
 	getState() bindState
 	setState(s bindState)

@@ -7,7 +7,7 @@ import (
 type LocalVariable struct {
 	Syntax *hclsyntax.Attribute
 
-	Type  Type
+	typ   Type
 	Value Expression
 
 	state bindState
@@ -15,6 +15,10 @@ type LocalVariable struct {
 
 func (lv *LocalVariable) SyntaxNode() hclsyntax.Node {
 	return lv.Syntax
+}
+
+func (lv *LocalVariable) Type() Type {
+	return lv.typ
 }
 
 func (lv *LocalVariable) getState() bindState {

@@ -6,6 +6,7 @@ import (
 )
 
 type Expression interface {
+	SyntaxNode() hclsyntax.Node
 	Type() Type
 
 	isExpression()
@@ -15,6 +16,10 @@ type AnonSymbolExpression struct {
 	Syntax *hclsyntax.AnonSymbolExpr
 
 	exprType Type
+}
+
+func (x *AnonSymbolExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *AnonSymbolExpression) Type() Type {
@@ -32,6 +37,10 @@ type BinaryOpExpression struct {
 	exprType Type
 }
 
+func (x *BinaryOpExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *BinaryOpExpression) Type() Type {
 	return x.exprType
 }
@@ -46,6 +55,10 @@ type ConditionalExpression struct {
 	FalseResult Expression
 }
 
+func (x *ConditionalExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *ConditionalExpression) Type() Type {
 	return BoolType
 }
@@ -56,6 +69,10 @@ type ErrorExpression struct {
 	Syntax hclsyntax.Node
 
 	exprType Type
+}
+
+func (x *ErrorExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *ErrorExpression) Type() Type {
@@ -75,6 +92,10 @@ type ForExpression struct {
 	exprType Type
 }
 
+func (x *ForExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *ForExpression) Type() Type {
 	return x.exprType
 }
@@ -87,6 +108,10 @@ type FunctionCallExpression struct {
 	Args []Expression
 
 	exprType Type
+}
+
+func (x *FunctionCallExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *FunctionCallExpression) Type() Type {
@@ -104,6 +129,10 @@ type IndexExpression struct {
 	exprType Type
 }
 
+func (x *IndexExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *IndexExpression) Type() Type {
 	return x.exprType
 }
@@ -118,6 +147,10 @@ type LiteralValueExpression struct {
 	exprType Type
 }
 
+func (x *LiteralValueExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *LiteralValueExpression) Type() Type {
 	return x.exprType
 }
@@ -130,6 +163,10 @@ type ObjectConsExpression struct {
 	Items []ObjectConsItem
 
 	exprType Type
+}
+
+func (x *ObjectConsExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *ObjectConsExpression) Type() Type {
@@ -151,6 +188,10 @@ type RelativeTraversalExpression struct {
 	exprType Type
 }
 
+func (x *RelativeTraversalExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *RelativeTraversalExpression) Type() Type {
 	return x.exprType
 }
@@ -161,6 +202,10 @@ type ScopeTraversalExpression struct {
 	Syntax *hclsyntax.ScopeTraversalExpr
 
 	exprType Type
+}
+
+func (x *ScopeTraversalExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *ScopeTraversalExpression) Type() Type {
@@ -179,6 +224,10 @@ type SplatExpression struct {
 	exprType Type
 }
 
+func (x *SplatExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *SplatExpression) Type() Type {
 	return x.exprType
 }
@@ -191,6 +240,10 @@ type TemplateExpression struct {
 	Parts []Expression
 }
 
+func (x *TemplateExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *TemplateExpression) Type() Type {
 	return StringType
 }
@@ -201,6 +254,10 @@ type TemplateJoinExpression struct {
 	Syntax *hclsyntax.TemplateJoinExpr
 
 	Tuple Expression
+}
+
+func (x *TemplateJoinExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *TemplateJoinExpression) Type() Type {
@@ -217,6 +274,10 @@ type TemplateWrapExpression struct {
 	exprType Type
 }
 
+func (x *TemplateWrapExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *TemplateWrapExpression) Type() Type {
 	return x.exprType
 }
@@ -231,6 +292,10 @@ type TupleConsExpression struct {
 	exprType Type
 }
 
+func (x *TupleConsExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
+}
+
 func (x *TupleConsExpression) Type() Type {
 	return x.exprType
 }
@@ -243,6 +308,10 @@ type UnaryOpExpression struct {
 	Operand Expression
 
 	exprType Type
+}
+
+func (x *UnaryOpExpression) SyntaxNode() hclsyntax.Node {
+	return x.Syntax
 }
 
 func (x *UnaryOpExpression) Type() Type {

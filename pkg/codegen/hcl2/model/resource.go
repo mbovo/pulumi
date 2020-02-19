@@ -22,6 +22,10 @@ func (r *Resource) SyntaxNode() hclsyntax.Node {
 	return r.Syntax
 }
 
+func (r *Resource) Type() Type {
+	return r.OutputType
+}
+
 func (r *Resource) getState() bindState {
 	return r.state
 }

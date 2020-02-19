@@ -7,7 +7,7 @@ import (
 type OutputVariable struct {
 	Syntax *hclsyntax.Block
 
-	Type  Type
+	typ   Type
 	Value Expression
 
 	state bindState
@@ -15,6 +15,10 @@ type OutputVariable struct {
 
 func (ov *OutputVariable) SyntaxNode() hclsyntax.Node {
 	return ov.Syntax
+}
+
+func (ov *OutputVariable) Type() Type {
+	return ov.typ
 }
 
 func (ov *OutputVariable) getState() bindState {

@@ -44,7 +44,7 @@ func notYetImplemented(v interface{}) hcl.Diagnostics {
 }
 
 func malformedToken(token string, sourceRange hcl.Range) *hcl.Diagnostic {
-	return errorf(sourceRange, "malformed token %v: expected \"pkg:module:member\"", token)
+	return errorf(sourceRange, "malformed token '%v': expected 'pkg:module:member'", token)
 }
 
 func circularReference(stack []hclsyntax.Node, referent hclsyntax.Node) *hcl.Diagnostic {
@@ -53,9 +53,61 @@ func circularReference(stack []hclsyntax.Node, referent hclsyntax.Node) *hcl.Dia
 }
 
 func unknownPackage(pkg string, tokenRange hcl.Range) *hcl.Diagnostic {
-	return errorf(tokenRange, "unknown package %s", pkg)
+	return errorf(tokenRange, "unknown package '%s'", pkg)
 }
 
 func unknownResourceType(token string, tokenRange hcl.Range) *hcl.Diagnostic {
-	return errorf(tokenRange, "unknown resource type %s", token)
+	return errorf(tokenRange, "unknown resource type '%s'", token)
+}
+
+func exprNotAssignable(destType Type, expr Expression) *hcl.Diagnostic {
+	return errorf(expr.SyntaxNode().Range(), "cannot assign expression of type %v to location of type %v", expr.Type(), destType)
+}
+
+func objectKeysMustBeStrings(expr Expression) *hcl.Diagnostic {
+	return errorf(expr.SyntaxNode().Range(), "object keys must be strings: cannot assign expression of type %v to location of type string", expr.Type())
+}
+
+func unsupportedLiteralValue(syntax *hclsyntax.LiteralValueExpr) *hcl.Diagnostic {
+	return errorf(syntax.Range(), "unsupported literal value of type %v", syntax.Val.Type())
+}
+
+func unknownFunction(name string, nameRange hcl.Range) *hcl.Diagnostic {
+	return errorf(nameRange, "unknown function '%s'", name)
+}
+
+func missingRequiredArgument(param parameter, callRange hcl.Range) *hcl.Diagnostic {
+	return errorf(callRange, "missing required parameter '%s'", param.name)
+}
+
+func extraArguments(expected, actual int, callRange hcl.Range) *hcl.Diagnostic {
+	return errorf(callRange, "too many arguments to call: expected %v, got %v", expected, actual)
+}
+
+func unsupportedIndexKey(key hcl.Traverser) *hcl.Diagnostic {
+	return errorf(key.SourceRange(), "keys must be strings or numbers")
+}
+
+func unsupportedMapKey(keyRange hcl.Range) *hcl.Diagnostic {
+	return errorf(keyRange, "map keys must be strings")
+}
+
+func unsupportedArrayIndex(indexRange hcl.Range) *hcl.Diagnostic {
+	return errorf(indexRange, "array indexes must be numbers")
+}
+
+func unsupportedObjectProperty(indexRange hcl.Range) *hcl.Diagnostic {
+	return errorf(indexRange, "object properties must be strings")
+}
+
+func unknownObjectProperty(name string, indexRange hcl.Range) *hcl.Diagnostic {
+	return errorf(indexRange, "unknown property '%s'", name)
+}
+
+func unsupportedReceiverType(receiver Type, indexRange hcl.Range) *hcl.Diagnostic {
+	return errorf(indexRange, "cannot index value of type %v", receiver)
+}
+
+func undefinedVariable(variableRange hcl.Range) *hcl.Diagnostic {
+	return errorf(variableRange, "undefined variable", variableRange)
 }
