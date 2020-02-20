@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/blang/semver"
@@ -75,11 +76,24 @@ func NewAnalyzer(host Host, ctx *Context, name tokens.QName) (Analyzer, error) {
 	}, nil
 }
 
-const policyAnalyzerName = "policy"
-
 // NewPolicyAnalyzer boots the nodejs analyzer plugin located at `policyPackpath`
 func NewPolicyAnalyzer(
 	host Host, ctx *Context, name tokens.QName, policyPackPath string, opts *PolicyAnalyzerOptions) (Analyzer, error) {
+
+	proj, err := workspace.LoadPolicyPack(filepath.Join(policyPackPath, "PulumiPolicy.yaml"))
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load Pulumi policy project located at %q", policyPackPath)
+	}
+
+	var policyAnalyzerName string
+	switch proj.Runtime.Name() {
+	case "nodejs":
+		policyAnalyzerName = "policy"
+	case "python":
+		policyAnalyzerName = "policy-python"
+	default:
+		return nil, fmt.Errorf("unsupported policy runtime %s", proj.Runtime.Name())
+	}
 
 	// Load the policy-booting analyzer plugin (i.e., `pulumi-analyzer-${policyAnalyzerName}`).
 	_, pluginPath, err := workspace.GetPluginPath(

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -204,7 +203,7 @@ func installRequiredPolicy(finalDir string, tarball []byte) error {
 	}
 
 	// npm unpacks into a directory called `package`.
-	tempNPMPkgDir := path.Join(tempDir, npmPackageDir)
+	tempNPMPkgDir := filepath.Join(tempDir, npmPackageDir)
 	if err := os.MkdirAll(tempNPMPkgDir, 0700); err != nil {
 		return errors.Wrap(err, "creating plugin root")
 	}
@@ -229,7 +228,7 @@ func installRequiredPolicy(finalDir string, tarball []byte) error {
 		return errors.Wrap(err, "moving plugin")
 	}
 
-	proj, err := workspace.LoadPolicyPack(path.Join(finalDir, "PulumiPolicy.yaml"))
+	proj, err := workspace.LoadPolicyPack(filepath.Join(finalDir, "PulumiPolicy.yaml"))
 	if err != nil {
 		return errors.Wrapf(err, "failed to load policy project at %s", finalDir)
 	}
