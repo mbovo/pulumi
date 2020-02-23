@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
@@ -14,6 +15,7 @@ type Resource struct {
 	Range  Expression
 
 	state bindState
+	deps  []Node
 
 	// TODO: Resource options
 }
@@ -34,6 +36,21 @@ func (r *Resource) setState(s bindState) {
 	r.state = s
 }
 
+func (r *Resource) getDependencies() []Node {
+	return r.deps
+}
+
+func (r *Resource) setDependencies(nodes []Node) {
+	r.deps = nodes
+}
+
 func (*Resource) isNode() {}
 
-// bind from syntax + schema
+func (r *Resource) Name() string {
+	return r.Syntax.Labels[0]
+}
+
+func (r *Resource) DecomposeToken() (string, string, string, hcl.Diagnostics) {
+	token, tokenRange := getResourceToken(r)
+	return decomposeToken(token, tokenRange)
+}

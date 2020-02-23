@@ -3,6 +3,7 @@ package model
 import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/pulumi/pulumi/pkg/codegen"
 	"github.com/pulumi/pulumi/pkg/util/contract"
 )
 
@@ -24,8 +25,11 @@ func (b *binder) bindNode(node Node) hcl.Diagnostics {
 	}()
 
 	// Bind the node's dependencies.
+	deps := b.getDependencies(node)
+	node.setDependencies(deps)
+
 	var diagnostics hcl.Diagnostics
-	for _, dep := range b.getDependencies(node) {
+	for _, dep := range deps {
 		diagnostics = append(diagnostics, b.bindNode(dep)...)
 	}
 
@@ -45,7 +49,7 @@ func (b *binder) bindNode(node Node) hcl.Diagnostics {
 }
 
 func (b *binder) getDependencies(node Node) []Node {
-	depSet := nodeSet{}
+	depSet := codegen.Set{}
 	var deps []Node
 	hclsyntax.VisitAll(node.SyntaxNode(), func(node hclsyntax.Node) hcl.Diagnostics {
 		depName := ""
@@ -59,8 +63,8 @@ func (b *binder) getDependencies(node Node) []Node {
 		}
 
 		// Missing reference errors will be issued during expression binding.
-		if referent, ok := b.nodes[depName]; ok && !depSet.has(referent) {
-			depSet.add(referent)
+		if referent, ok := b.root.bindReference(depName); ok && !depSet.Has(referent) {
+			depSet.Add(referent)
 			deps = append(deps, referent)
 		}
 		return nil

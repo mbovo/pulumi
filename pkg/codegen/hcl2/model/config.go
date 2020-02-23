@@ -11,6 +11,7 @@ type ConfigVariable struct {
 	DefaultValue Expression
 
 	state bindState
+	deps  []Node
 }
 
 func (cv *ConfigVariable) SyntaxNode() hclsyntax.Node {
@@ -27,6 +28,14 @@ func (cv *ConfigVariable) getState() bindState {
 
 func (cv *ConfigVariable) setState(s bindState) {
 	cv.state = s
+}
+
+func (cv *ConfigVariable) getDependencies() []Node {
+	return cv.deps
+}
+
+func (cv *ConfigVariable) setDependencies(nodes []Node) {
+	cv.deps = nodes
 }
 
 func (*ConfigVariable) isNode() {}

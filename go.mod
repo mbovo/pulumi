@@ -9,8 +9,9 @@ require (
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/cheggaaa/pb v1.0.27
 	github.com/d5/tengo/v2 v2.0.2
+	github.com/davecgh/go-spew v1.1.1
 	github.com/djherbis/times v1.0.1
-	github.com/docker/docker v0.0.0-20170504205632-89658bed64c2
+	github.com/docker/docker v1.13.1
 	github.com/dustin/go-humanize v1.0.0
 	github.com/gofrs/flock v0.7.0
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
@@ -20,6 +21,8 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20171105060200-01f8541d5372
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/hashicorp/hcl/v2 v2.3.0
+	github.com/hashicorp/hil v0.0.0-20190212132231-97b3a9cdfa93
+	github.com/hashicorp/terraform-plugin-sdk v1.6.0
 	github.com/ijc/Gotty v0.0.0-20170406111628-a8b993ba6abd
 	github.com/mitchellh/copystructure v1.0.0
 	github.com/mitchellh/go-ps v0.0.0-20190716172923-621e5597135b
@@ -28,6 +31,8 @@ require (
 	github.com/opentracing/opentracing-go v1.0.2
 	github.com/pkg/errors v0.8.1
 	github.com/pulumi/pulumi-aws v1.21.0 // indirect
+	github.com/pulumi/pulumi-terraform-bridge v1.6.4
+	github.com/pulumi/tf2pulumi v0.6.0
 	github.com/rjeczalik/notify v0.9.2
 	github.com/satori/go.uuid v1.2.0
 	github.com/sergi/go-diff v1.0.0

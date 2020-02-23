@@ -2,53 +2,53 @@ package model
 
 import "github.com/hashicorp/hcl/v2"
 
-type parameter struct {
-	name string
-	typ  Type
+type Parameter struct {
+	Name string
+	Type Type
 }
 
-type functionSignature struct {
-	parameters       []parameter
-	varargsParameter *parameter
-	returnType       Type
+type FunctionSignature struct {
+	Parameters       []Parameter
+	VarargsParameter *Parameter
+	ReturnType       Type
 }
 
-type functionDefinition func(arguments []Expression) (functionSignature, hcl.Diagnostics)
+type functionDefinition func(arguments []Expression) (FunctionSignature, hcl.Diagnostics)
 
-func (f functionDefinition) signature(arguments []Expression) (functionSignature, hcl.Diagnostics) {
+func (f functionDefinition) signature(arguments []Expression) (FunctionSignature, hcl.Diagnostics) {
 	return f(arguments)
 }
 
 func getFunctionDefinition(name string, nameRange hcl.Range) (functionDefinition, hcl.Diagnostics) {
 	switch name {
 	case "fileAsset":
-		return func(arguments []Expression) (functionSignature, hcl.Diagnostics) {
-			return functionSignature{
-				parameters: []parameter{{
-					name: "path",
-					typ:  StringType,
+		return func(arguments []Expression) (FunctionSignature, hcl.Diagnostics) {
+			return FunctionSignature{
+				Parameters: []Parameter{{
+					Name: "path",
+					Type: StringType,
 				}},
-				returnType: AssetType,
+				ReturnType: AssetType,
 			}, nil
 		}, nil
 	case "mimeType":
-		return func(arguments []Expression) (functionSignature, hcl.Diagnostics) {
-			return functionSignature{
-				parameters: []parameter{{
-					name: "path",
-					typ:  StringType,
+		return func(arguments []Expression) (FunctionSignature, hcl.Diagnostics) {
+			return FunctionSignature{
+				Parameters: []Parameter{{
+					Name: "path",
+					Type: StringType,
 				}},
-				returnType: StringType,
+				ReturnType: StringType,
 			}, nil
 		}, nil
 	case "toJSON":
-		return func(arguments []Expression) (functionSignature, hcl.Diagnostics) {
-			return functionSignature{
-				parameters: []parameter{{
-					name: "value",
-					typ:  AnyType,
+		return func(arguments []Expression) (FunctionSignature, hcl.Diagnostics) {
+			return FunctionSignature{
+				Parameters: []Parameter{{
+					Name: "value",
+					Type: AnyType,
 				}},
-				returnType: StringType,
+				ReturnType: StringType,
 			}, nil
 		}, nil
 	default:

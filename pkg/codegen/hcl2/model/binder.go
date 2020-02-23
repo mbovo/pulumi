@@ -14,9 +14,11 @@ type binder struct {
 	host plugin.Host
 
 	packageSchemas map[string]*packageSchema
-	nodes          map[string]Node
 
-	stack []hclsyntax.Node
+	stack       []hclsyntax.Node
+	anonSymbols map[*hclsyntax.AnonSymbolExpr]*LocalVariable
+	scopes      *scopes
+	root        scope
 }
 
 func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnostics, error) {
@@ -35,8 +37,10 @@ func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnost
 	b := &binder{
 		host:           host,
 		packageSchemas: map[string]*packageSchema{},
-		nodes:          map[string]Node{},
+		anonSymbols:    map[*hclsyntax.AnonSymbolExpr]*LocalVariable{},
+		scopes:         &scopes{},
 	}
+	b.root = b.scopes.push()
 
 	var diagnostics hcl.Diagnostics
 
@@ -50,7 +54,7 @@ func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnost
 
 	// Sort nodes in source order so downstream operations are deterministic.
 	var nodes []Node
-	for _, n := range b.nodes {
+	for _, n := range b.root {
 		nodes = append(nodes, n)
 	}
 	sourceOrderNodes(nodes)
@@ -68,8 +72,9 @@ func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnost
 	}
 
 	return &Program{
-		Nodes: nodes,
-		files: files,
+		Nodes:  nodes,
+		files:  files,
+		binder: b,
 	}, diagnostics, nil
 }
 
@@ -136,10 +141,9 @@ func (b *binder) declareNodes(file *syntax.File) hcl.Diagnostics {
 }
 
 func (b *binder) declareNode(name string, n Node) hcl.Diagnostics {
-	if existing, ok := b.nodes[name]; ok {
+	if !b.root.define(name, n) {
+		existing, _ := b.root.bindReference(name)
 		return hcl.Diagnostics{errorf(existing.SyntaxNode().Range(), "%q already declared", name)}
 	}
-
-	b.nodes[name] = n
 	return nil
 }

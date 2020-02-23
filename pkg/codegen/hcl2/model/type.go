@@ -177,33 +177,73 @@ func (t *OutputType) String() string {
 
 func (t *OutputType) isType() {}
 
-func ResolveOutputs(t Type) Type {
-	switch t := t.(type) {
-	case *OptionalType:
-		return NewOptionalType(ResolveOutputs(t.ElementType))
-	case *OutputType:
-		return t.ElementType
-	case *PromiseType:
-		return t.ElementType
-	case *MapType:
-		return NewMapType(ResolveOutputs(t.ElementType))
-	case *ArrayType:
-		return NewArrayType(ResolveOutputs(t.ElementType))
-	case *UnionType:
-		elementTypes := make([]Type, len(t.ElementTypes))
-		for i, t := range t.ElementTypes {
-			elementTypes[i] = ResolveOutputs(t)
-		}
-		return NewUnionType(elementTypes[0], elementTypes[1], elementTypes[2:]...)
-	case *ObjectType:
-		properties := map[string]Type{}
-		for k, t := range t.Properties {
-			properties[k] = ResolveOutputs(t)
-		}
-		return NewObjectType(properties)
+type typeTransform int
+
+var (
+	makeIdentity = typeTransform(0)
+	makePromise  = typeTransform(1)
+	makeOutput   = typeTransform(2)
+)
+
+func (f typeTransform) do(t Type) Type {
+	switch f {
+	case makePromise:
+		return NewPromiseType(t)
+	case makeOutput:
+		return NewOutputType(t)
 	default:
 		return t
 	}
+}
+
+func resolveEventuals(t Type, resolveOutputs bool) (Type, typeTransform) {
+	switch t := t.(type) {
+	case *OptionalType:
+		resolved, transform := resolveEventuals(t.ElementType, resolveOutputs)
+		return NewOptionalType(resolved), transform
+	case *OutputType:
+		if resolveOutputs {
+			return t.ElementType, makeOutput
+		}
+		return t, makeIdentity
+	case *PromiseType:
+		return t.ElementType, makePromise
+	case *MapType:
+		resolved, transform := resolveEventuals(t.ElementType, resolveOutputs)
+		return NewMapType(resolved), transform
+	case *ArrayType:
+		resolved, transform := resolveEventuals(t.ElementType, resolveOutputs)
+		return NewArrayType(resolved), transform
+	case *UnionType:
+		transform := makeIdentity
+		elementTypes := make([]Type, len(t.ElementTypes))
+		for i, t := range t.ElementTypes {
+			element, elementTransform := resolveEventuals(t, resolveOutputs)
+			if transform == makeIdentity || transform != makeOutput {
+				transform = elementTransform
+			}
+			elementTypes[i] = element
+		}
+		return NewUnionType(elementTypes[0], elementTypes[1], elementTypes[2:]...), transform
+	case *ObjectType:
+		transform := makeIdentity
+		properties := map[string]Type{}
+		for k, t := range t.Properties {
+			property, propertyTransform := resolveEventuals(t, resolveOutputs)
+			if transform == makeIdentity || transform != makeOutput {
+				transform = propertyTransform
+			}
+			properties[k] = property
+		}
+		return NewObjectType(properties), transform
+	default:
+		return t, makeIdentity
+	}
+}
+
+func ResolveOutputs(t Type) Type {
+	resolved, _ := resolveEventuals(t, true)
+	return resolved
 }
 
 // PromiseType represents eventual values that do not carry dependency information (e.g invoke return values)
@@ -248,30 +288,8 @@ func (t *PromiseType) String() string {
 func (t *PromiseType) isType() {}
 
 func ResolvePromises(t Type) Type {
-	switch t := t.(type) {
-	case *OptionalType:
-		return NewOptionalType(ResolvePromises(t.ElementType))
-	case *PromiseType:
-		return t.ElementType
-	case *MapType:
-		return NewMapType(ResolvePromises(t.ElementType))
-	case *ArrayType:
-		return NewArrayType(ResolvePromises(t.ElementType))
-	case *UnionType:
-		elementTypes := make([]Type, len(t.ElementTypes))
-		for i, t := range t.ElementTypes {
-			elementTypes[i] = ResolvePromises(t)
-		}
-		return NewUnionType(elementTypes[0], elementTypes[1], elementTypes[2:]...)
-	case *ObjectType:
-		properties := map[string]Type{}
-		for k, t := range t.Properties {
-			properties[k] = ResolvePromises(t)
-		}
-		return NewObjectType(properties)
-	default:
-		return t
-	}
+	resolved, _ := resolveEventuals(t, false)
+	return resolved
 }
 
 // MapType represents maps from strings to particular element types.
@@ -545,4 +563,78 @@ func (*TokenType) isType() {}
 
 func IsOptionalType(t Type) bool {
 	return t.AssignableFrom(nil)
+}
+
+func isEventualType(t Type) (Type, bool) {
+	switch t := t.(type) {
+	case *OutputType:
+		return t.ElementType, true
+	case *PromiseType:
+		return t.ElementType, true
+	default:
+		return nil, false
+	}
+}
+
+func hasEventualTypes(t Type) (Type, bool) {
+	resolved := ResolveOutputs(t)
+	return resolved, resolved != t
+}
+
+func assignableFromResolved(dest, src Type) bool {
+	return dest.AssignableFrom(ResolveOutputs(src))
+}
+
+func liftOperationType(resultType Type, arguments ...Expression) Type {
+	var transform typeTransform
+	for _, arg := range arguments {
+		_, t := resolveEventuals(arg.Type(), true)
+		if transform == makeIdentity || transform != makeOutput {
+			transform = t
+		}
+	}
+	return transform.do(resultType)
+}
+
+var inputTypes = map[Type]Type{}
+
+func inputType(t Type) Type {
+	if t == AnyType || t == nil {
+		return t
+	}
+	if input, ok := inputTypes[t]; ok {
+		return input
+	}
+
+	var src Type
+	switch t := t.(type) {
+	case *OptionalType:
+		src = NewOptionalType(inputType(t.ElementType))
+	case *OutputType:
+		return t
+	case *PromiseType:
+		src = NewPromiseType(inputType(t.ElementType))
+	case *MapType:
+		src = NewMapType(inputType(t.ElementType))
+	case *ArrayType:
+		src = NewArrayType(inputType(t.ElementType))
+	case *UnionType:
+		elementTypes := make([]Type, len(t.ElementTypes))
+		for i, t := range t.ElementTypes {
+			elementTypes[i] = inputType(t)
+		}
+		src = NewUnionType(elementTypes[0], elementTypes[1], elementTypes[2:]...)
+	case *ObjectType:
+		properties := map[string]Type{}
+		for k, t := range t.Properties {
+			properties[k] = inputType(t)
+		}
+		src = NewObjectType(properties)
+	default:
+		src = t
+	}
+
+	input := NewUnionType(src, NewOutputType(src))
+	inputTypes[t] = input
+	return input
 }

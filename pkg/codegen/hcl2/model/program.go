@@ -22,6 +22,8 @@ type Node interface {
 
 	getState() bindState
 	setState(s bindState)
+	getDependencies() []Node
+	setDependencies(nodes []Node)
 
 	isNode()
 }
@@ -30,8 +32,14 @@ type Program struct {
 	Nodes []Node
 
 	files []*syntax.File
+
+	binder *binder
 }
 
 func (p *Program) NewDiagnosticWriter(w io.Writer, width uint, color bool) hcl.DiagnosticWriter {
 	return syntax.NewDiagnosticWriter(w, p.files, width, color)
+}
+
+func (p *Program) BindExpression(node hclsyntax.Node) (Expression, hcl.Diagnostics) {
+	return p.binder.bindExpression(node)
 }

@@ -1,5 +1,4 @@
 // Copyright 2016-2020, Pulumi Corporation.
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package nodejs
+package python
 
 import (
 	"fmt"
@@ -48,7 +47,7 @@ func GenerateProgram(program *model.Program, outputDirectory string) (hcl.Diagno
 	}
 	g.Formatter = format.NewFormatter(g)
 
-	index, err := os.Create(filepath.Join(outputDirectory, "index.ts"))
+	index, err := os.Create(filepath.Join(outputDirectory, "__main__.py"))
 	if err != nil {
 		return nil, err
 	}
@@ -63,19 +62,16 @@ func GenerateProgram(program *model.Program, outputDirectory string) (hcl.Diagno
 	return g.diagnostics, nil
 }
 
-func tsName(pulumiName string, isObjectKey bool) string {
-	if !isLegalIdentifier(pulumiName) {
-		if isObjectKey {
-			return fmt.Sprintf("%q", pulumiName)
-		}
-		return cleanName(pulumiName)
+func pyName(pulumiName string, isObjectKey bool) string {
+	if isObjectKey {
+		return fmt.Sprintf("%q", pulumiName)
 	}
-	return pulumiName
+	return PyName(cleanName(pulumiName))
 }
 
 func (g *generator) genPreamble(w io.Writer, program *model.Program) {
-	// Print the @pulumi/pulumi import at the top.
-	g.Fprintln(w, `import * as pulumi from "@pulumi/pulumi";`)
+	// Print the pulumi import at the top.
+	g.Fprintln(w, "import pulumi")
 
 	// Accumulate other imports for the various providers. Don't emit them yet, as we need to sort them later on.
 	var imports []string
@@ -85,10 +81,9 @@ func (g *generator) genPreamble(w io.Writer, program *model.Program) {
 		if r, isResource := n.(*model.Resource); isResource {
 			pkg, _, _, _ := r.DecomposeToken()
 
-			importName := cleanName(pkg)
-			if !importSet.Has(importName) {
-				imports = append(imports, fmt.Sprintf(`import * as %s from "@pulumi/%s";`, importName, pkg))
-				importSet.Add(importName)
+			if !importSet.Has(pkg) {
+				imports = append(imports, fmt.Sprintf("import pulumi_%[1]s as %[1]s", pkg))
+				importSet.Add(pkg)
 			}
 		}
 	}
@@ -115,7 +110,7 @@ func (g *generator) genNode(w io.Writer, n model.Node) {
 func resourceTypeName(r *model.Resource) (string, string, string, hcl.Diagnostics) {
 	// Compute the resource type from the Pulumi type token.
 	pkg, module, member, diagnostics := r.DecomposeToken()
-	return cleanName(pkg), strings.Replace(module, "/", ".", -1), title(member), diagnostics
+	return pyName(pkg, false), strings.Replace(module, "/", ".", -1), title(member), diagnostics
 }
 
 // makeResourceName returns the expression that should be emitted for a resource's "name" parameter given its base name
@@ -124,7 +119,7 @@ func (g *generator) makeResourceName(baseName, count string) string {
 	if count == "" {
 		return fmt.Sprintf(`"%s"`, baseName)
 	}
-	return fmt.Sprintf("`%s-${%s}`", baseName, count)
+	return fmt.Sprintf(`f"%s-${%s}"`, baseName, count)
 }
 
 // genResource handles the generation of instantiations of non-builtin resources.
@@ -140,13 +135,29 @@ func (g *generator) genResource(w io.Writer, r *model.Resource) {
 
 	optionsBag := ""
 
-	inputs := g.genExpression(r.Inputs)
+	inputs := r.Inputs.(*model.ObjectConsExpression)
 
-	name := r.Name()
+	name := pyName(r.Name(), false)
 	resName := g.makeResourceName(name, "")
-	g.Fgenf(w, "%sconst %s = new %s(%s, %s%s);\n", g.Indent, name, qualifiedMemberName, resName, inputs, optionsBag)
+	g.Fgenf(w, "%s%s = %s(%s", g.Indent, name, qualifiedMemberName, resName)
+	indenter := func(f func()) { f() }
+	if len(inputs.Items) > 1 {
+		indenter = g.Indented
+	}
+	indenter(func() {
+		for _, item := range inputs.Items {
+			lit := item.Key.(*model.LiteralValueExpression)
+			propertyName := pyName(lit.Value.StringValue(), false)
+			if len(inputs.Items) == 1 {
+				g.Fgenf(w, ", %s=%v", propertyName, item.Value)
+			} else {
+				g.Fgenf(w, ",\n%s%s=%v", g.Indent, propertyName, item.Value)
+			}
+		}
+	})
+	g.Fgenf(w, "%s)\n", optionsBag)
 }
 
 func (g *generator) genNYI(w io.Writer, reason string, vs ...interface{}) {
-	g.Fgenf(w, "(() => throw new Error(%q))()", fmt.Sprintf(reason, vs...))
+	g.Fgenf(w, "(lambda: throw Error(%q))()", fmt.Sprintf(reason, vs...))
 }

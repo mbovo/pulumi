@@ -64,6 +64,10 @@ func exprNotAssignable(destType Type, expr Expression) *hcl.Diagnostic {
 	return errorf(expr.SyntaxNode().Range(), "cannot assign expression of type %v to location of type %v", expr.Type(), destType)
 }
 
+func typesNotAssignable(destType, srcType Type, srcRange hcl.Range) *hcl.Diagnostic {
+	return errorf(srcRange, "cannot assign expression of type %v to location of type %v", srcType, destType)
+}
+
 func objectKeysMustBeStrings(expr Expression) *hcl.Diagnostic {
 	return errorf(expr.SyntaxNode().Range(), "object keys must be strings: cannot assign expression of type %v to location of type string", expr.Type())
 }
@@ -76,8 +80,8 @@ func unknownFunction(name string, nameRange hcl.Range) *hcl.Diagnostic {
 	return errorf(nameRange, "unknown function '%s'", name)
 }
 
-func missingRequiredArgument(param parameter, callRange hcl.Range) *hcl.Diagnostic {
-	return errorf(callRange, "missing required parameter '%s'", param.name)
+func missingRequiredArgument(param Parameter, callRange hcl.Range) *hcl.Diagnostic {
+	return errorf(callRange, "missing required parameter '%s'", param.Name)
 }
 
 func extraArguments(expected, actual int, callRange hcl.Range) *hcl.Diagnostic {
@@ -108,6 +112,18 @@ func unsupportedReceiverType(receiver Type, indexRange hcl.Range) *hcl.Diagnosti
 	return errorf(indexRange, "cannot index value of type %v", receiver)
 }
 
+func unsupportedCollectionType(collectionType Type, iteratorRange hcl.Range) *hcl.Diagnostic {
+	return errorf(iteratorRange, "cannot iterator over a value of type %v", collectionType)
+}
+
 func undefinedVariable(variableRange hcl.Range) *hcl.Diagnostic {
-	return errorf(variableRange, "undefined variable", variableRange)
+	return errorf(variableRange, "undefined variable")
+}
+
+func internalError(rng hcl.Range, fmt string, args ...interface{}) *hcl.Diagnostic {
+	return errorf(rng, "Internal error: "+fmt, args...)
+}
+
+func nameAlreadyDefined(name string, rng hcl.Range) *hcl.Diagnostic {
+	return errorf(rng, "name %v already defined", name)
 }

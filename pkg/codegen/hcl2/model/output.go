@@ -11,6 +11,7 @@ type OutputVariable struct {
 	Value Expression
 
 	state bindState
+	deps  []Node
 }
 
 func (ov *OutputVariable) SyntaxNode() hclsyntax.Node {
@@ -27,6 +28,14 @@ func (ov *OutputVariable) getState() bindState {
 
 func (ov *OutputVariable) setState(s bindState) {
 	ov.state = s
+}
+
+func (ov *OutputVariable) getDependencies() []Node {
+	return ov.deps
+}
+
+func (ov *OutputVariable) setDependencies(nodes []Node) {
+	ov.deps = nodes
 }
 
 func (*OutputVariable) isNode() {}

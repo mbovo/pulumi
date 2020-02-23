@@ -12,21 +12,23 @@ type Expression interface {
 	isExpression()
 }
 
-type AnonSymbolExpression struct {
-	Syntax *hclsyntax.AnonSymbolExpr
+type AnonymousFunctionExpression struct {
+	Signature  FunctionSignature
+	Parameters []*LocalVariable
 
-	exprType Type
+	Body Expression
 }
 
-func (x *AnonSymbolExpression) SyntaxNode() hclsyntax.Node {
-	return x.Syntax
+func (x *AnonymousFunctionExpression) SyntaxNode() hclsyntax.Node {
+	return x.Body.SyntaxNode()
 }
 
-func (x *AnonSymbolExpression) Type() Type {
-	return x.exprType
+func (x *AnonymousFunctionExpression) Type() Type {
+	// TODO: function types
+	return AnyType
 }
 
-func (*AnonSymbolExpression) isExpression() {}
+func (*AnonymousFunctionExpression) isExpression() {}
 
 type BinaryOpExpression struct {
 	Syntax *hclsyntax.BinaryOpExpr
@@ -53,6 +55,8 @@ type ConditionalExpression struct {
 	Condition   Expression
 	TrueResult  Expression
 	FalseResult Expression
+
+	exprType Type
 }
 
 func (x *ConditionalExpression) SyntaxNode() hclsyntax.Node {
@@ -60,7 +64,7 @@ func (x *ConditionalExpression) SyntaxNode() hclsyntax.Node {
 }
 
 func (x *ConditionalExpression) Type() Type {
-	return BoolType
+	return x.exprType
 }
 
 func (*ConditionalExpression) isExpression() {}
@@ -105,9 +109,9 @@ func (*ForExpression) isExpression() {}
 type FunctionCallExpression struct {
 	Syntax *hclsyntax.FunctionCallExpr
 
-	Args []Expression
-
-	exprType Type
+	Name      string
+	Signature FunctionSignature
+	Args      []Expression
 }
 
 func (x *FunctionCallExpression) SyntaxNode() hclsyntax.Node {
@@ -115,7 +119,7 @@ func (x *FunctionCallExpression) SyntaxNode() hclsyntax.Node {
 }
 
 func (x *FunctionCallExpression) Type() Type {
-	return x.exprType
+	return x.Signature.ReturnType
 }
 
 func (*FunctionCallExpression) isExpression() {}
@@ -184,8 +188,7 @@ type RelativeTraversalExpression struct {
 	Syntax *hclsyntax.RelativeTraversalExpr
 
 	Source Expression
-
-	exprType Type
+	Types  []Type
 }
 
 func (x *RelativeTraversalExpression) SyntaxNode() hclsyntax.Node {
@@ -193,7 +196,7 @@ func (x *RelativeTraversalExpression) SyntaxNode() hclsyntax.Node {
 }
 
 func (x *RelativeTraversalExpression) Type() Type {
-	return x.exprType
+	return x.Types[len(x.Types)-1]
 }
 
 func (*RelativeTraversalExpression) isExpression() {}
@@ -201,7 +204,8 @@ func (*RelativeTraversalExpression) isExpression() {}
 type ScopeTraversalExpression struct {
 	Syntax *hclsyntax.ScopeTraversalExpr
 
-	exprType Type
+	Node  Node
+	Types []Type
 }
 
 func (x *ScopeTraversalExpression) SyntaxNode() hclsyntax.Node {
@@ -209,7 +213,7 @@ func (x *ScopeTraversalExpression) SyntaxNode() hclsyntax.Node {
 }
 
 func (x *ScopeTraversalExpression) Type() Type {
-	return x.exprType
+	return x.Types[len(x.Types)-1]
 }
 
 func (*ScopeTraversalExpression) isExpression() {}
@@ -219,7 +223,7 @@ type SplatExpression struct {
 
 	Source Expression
 	Each   Expression
-	Item   *AnonSymbolExpression
+	Item   *LocalVariable
 
 	exprType Type
 }
@@ -238,6 +242,8 @@ type TemplateExpression struct {
 	Syntax *hclsyntax.TemplateExpr
 
 	Parts []Expression
+
+	exprType Type
 }
 
 func (x *TemplateExpression) SyntaxNode() hclsyntax.Node {
@@ -245,7 +251,7 @@ func (x *TemplateExpression) SyntaxNode() hclsyntax.Node {
 }
 
 func (x *TemplateExpression) Type() Type {
-	return StringType
+	return x.exprType
 }
 
 func (*TemplateExpression) isExpression() {}
@@ -254,6 +260,8 @@ type TemplateJoinExpression struct {
 	Syntax *hclsyntax.TemplateJoinExpr
 
 	Tuple Expression
+
+	exprType Type
 }
 
 func (x *TemplateJoinExpression) SyntaxNode() hclsyntax.Node {
@@ -261,28 +269,10 @@ func (x *TemplateJoinExpression) SyntaxNode() hclsyntax.Node {
 }
 
 func (x *TemplateJoinExpression) Type() Type {
-	return StringType
-}
-
-func (*TemplateJoinExpression) isExpression() {}
-
-type TemplateWrapExpression struct {
-	Syntax *hclsyntax.TemplateWrapExpr
-
-	Wrapped Expression
-
-	exprType Type
-}
-
-func (x *TemplateWrapExpression) SyntaxNode() hclsyntax.Node {
-	return x.Syntax
-}
-
-func (x *TemplateWrapExpression) Type() Type {
 	return x.exprType
 }
 
-func (*TemplateWrapExpression) isExpression() {}
+func (*TemplateJoinExpression) isExpression() {}
 
 type TupleConsExpression struct {
 	Syntax *hclsyntax.TupleConsExpr

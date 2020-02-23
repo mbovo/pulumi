@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/pulumi/pulumi/pkg/codegen"
 	"github.com/pulumi/pulumi/pkg/codegen/schema"
 	"github.com/pulumi/pulumi/pkg/tokens"
 	"github.com/pulumi/pulumi/pkg/util/contract"
@@ -24,12 +25,12 @@ func canonicalizeToken(tok string, pkg *schema.Package) string {
 
 func (b *binder) loadReferencedPackageSchemas(n Node) error {
 	// TODO: package versions
-	packageNames := stringSet{}
+	packageNames := codegen.StringSet{}
 
 	if r, ok := n.(*Resource); ok {
 		token, tokenRange := getResourceToken(r)
 		packageName, _, _, _ := decomposeToken(token, tokenRange)
-		packageNames.add(packageName)
+		packageNames.Add(packageName)
 	}
 
 	hclsyntax.VisitAll(n.SyntaxNode(), func(node hclsyntax.Node) hcl.Diagnostics {
@@ -42,11 +43,11 @@ func (b *binder) loadReferencedPackageSchemas(n Node) error {
 			return nil
 		}
 		packageName, _, _, _ := decomposeToken(token, tokenRange)
-		packageNames.add(packageName)
+		packageNames.Add(packageName)
 		return nil
 	})
 
-	for _, name := range packageNames.sortedValues() {
+	for _, name := range packageNames.SortedValues() {
 		if err := b.loadPackageSchema(name); err != nil {
 			return err
 		}
@@ -97,23 +98,22 @@ func (b *binder) loadPackageSchema(name string) error {
 	return nil
 }
 
-func schemaTypeToType(src schema.Type, wrapInput bool) Type {
-	var dst Type
+func schemaTypeToType(src schema.Type) Type {
 	switch src := src.(type) {
 	case *schema.ArrayType:
-		dst = NewArrayType(schemaTypeToType(src.ElementType, wrapInput))
+		return NewArrayType(schemaTypeToType(src.ElementType))
 	case *schema.MapType:
-		dst = NewMapType(schemaTypeToType(src.ElementType, wrapInput))
+		return NewMapType(schemaTypeToType(src.ElementType))
 	case *schema.ObjectType:
 		properties := map[string]Type{}
 		for _, prop := range src.Properties {
-			t := schemaTypeToType(prop.Type, wrapInput)
+			t := schemaTypeToType(prop.Type)
 			if !prop.IsRequired {
 				t = NewOptionalType(t)
 			}
 			properties[prop.Name] = t
 		}
-		dst = NewObjectType(properties)
+		return NewObjectType(properties)
 	case *schema.TokenType:
 		t, ok := GetTokenType(src.Token)
 		if !ok {
@@ -121,51 +121,43 @@ func schemaTypeToType(src schema.Type, wrapInput bool) Type {
 			contract.IgnoreError(err)
 			t = tt
 		}
-		dst = t
 
-		if wrapInput {
-			dst = NewUnionType(dst, NewOutputType(dst))
+		if src.UnderlyingType != nil {
+			underlyingType := schemaTypeToType(src.UnderlyingType)
+			return NewUnionType(t, underlyingType)
 		}
-		if src.UnderlyingType == nil {
-			return dst
-		}
-
-		underlyingType := schemaTypeToType(src.UnderlyingType, wrapInput)
-		return NewUnionType(dst, underlyingType)
+		return t
 	case *schema.UnionType:
 		switch len(src.ElementTypes) {
 		case 0:
 			return nil
 		case 1:
-			return schemaTypeToType(src.ElementTypes[0], wrapInput)
+			return schemaTypeToType(src.ElementTypes[0])
 		default:
 			types := make([]Type, len(src.ElementTypes))
 			for i, src := range src.ElementTypes {
-				types[i] = schemaTypeToType(src, wrapInput)
+				types[i] = schemaTypeToType(src)
 			}
-			dst = NewUnionType(types[0], types[1], types[2:]...)
+			return NewUnionType(types[0], types[1], types[2:]...)
 		}
 	default:
 		switch src {
 		case schema.BoolType:
-			dst = BoolType
+			return BoolType
 		case schema.IntType:
-			dst = IntType
+			return IntType
 		case schema.NumberType:
-			dst = NumberType
+			return NumberType
 		case schema.StringType:
-			dst = StringType
+			return StringType
 		case schema.ArchiveType:
-			dst = ArchiveType
+			return ArchiveType
 		case schema.AssetType:
-			dst = AssetType
+			return AssetType
 		case schema.AnyType:
 			return AnyType
+		default:
+			return nil
 		}
 	}
-
-	if wrapInput {
-		dst = NewUnionType(dst, NewOutputType(dst))
-	}
-	return dst
 }

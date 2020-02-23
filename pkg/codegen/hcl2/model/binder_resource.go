@@ -37,14 +37,14 @@ func (b *binder) bindResourceTypes(node *Resource) hcl.Diagnostics {
 	}
 
 	// Create input and output types for the schema.
-	inputType := schemaTypeToType(&schema.ObjectType{Properties: res.InputProperties}, true)
+	inputType := inputType(schemaTypeToType(&schema.ObjectType{Properties: res.InputProperties}))
 
 	outputProperties := map[string]Type{
 		"id":  NewOutputType(StringType),
 		"urn": NewOutputType(StringType),
 	}
 	for _, prop := range res.Properties {
-		outputProperties[prop.Name] = NewOutputType(schemaTypeToType(prop.Type, false))
+		outputProperties[prop.Name] = NewOutputType(schemaTypeToType(prop.Type))
 	}
 	outputType := NewObjectType(outputProperties)
 
@@ -70,6 +70,8 @@ func (b *binder) bindResourceTypes(node *Resource) hcl.Diagnostics {
 	if !node.InputType.AssignableFrom(bodyExpr.Type()) {
 		diagnostics = append(diagnostics, exprNotAssignable(node.InputType, bodyExpr))
 	}
+
+	node.Inputs = bodyExpr
 
 	// TODO(pdg): resource options
 
