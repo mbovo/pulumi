@@ -1,3 +1,17 @@
+// Copyright 2016-2020, Pulumi Corporation.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package model
 
 import (
@@ -8,6 +22,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// bindExpression binds a single HCL2 expression.
 func (b *binder) bindExpression(syntax hclsyntax.Node) (Expression, hcl.Diagnostics) {
 	switch syntax := syntax.(type) {
 	case *hclsyntax.AnonSymbolExpr:
@@ -50,6 +65,7 @@ func (b *binder) bindExpression(syntax hclsyntax.Node) (Expression, hcl.Diagnost
 	}
 }
 
+// ctyTypeToType converts a cty.Type to a model Type.
 func ctyTypeToType(t cty.Type, optional bool) Type {
 	// TODO(pdg): non-primitive types. We simply don't need these yet.
 	var result Type
@@ -72,6 +88,8 @@ func ctyTypeToType(t cty.Type, optional bool) Type {
 	return result
 }
 
+// getOperationSignature returns the equivalent FunctionSignature for a given Operation. This signature can be used
+// for typechecking the operation's arguments.
 func getOperationSignature(op *hclsyntax.Operation) FunctionSignature {
 	ctyParams := op.Impl.Params()
 
@@ -96,9 +114,12 @@ func getOperationSignature(op *hclsyntax.Operation) FunctionSignature {
 	return sig
 }
 
+// typecheckArgs typechecks the arguments against a given function signature.
 func typecheckArgs(srcRange hcl.Range, signature FunctionSignature, args ...Expression) hcl.Diagnostics {
 	var diagnostics hcl.Diagnostics
 
+	// First typecheck the arguments for positional parameters. It is an error if there are fewer arguments than parameters
+	// unless all missing arguments are for parameters with optional types.
 	remainingArgs := args
 	for _, param := range signature.Parameters {
 		if len(remainingArgs) == 0 {
@@ -113,6 +134,7 @@ func typecheckArgs(srcRange hcl.Range, signature FunctionSignature, args ...Expr
 		}
 	}
 
+	// Typecheck any remaining arguments against the varargs parameter. It is an error if there is no varargs parameter.
 	if len(remainingArgs) > 0 {
 		varargs := signature.VarargsParameter
 		if varargs == nil {
@@ -129,6 +151,9 @@ func typecheckArgs(srcRange hcl.Range, signature FunctionSignature, args ...Expr
 	return diagnostics
 }
 
+// bindAnonSymbolExpression binds an anonymous symbol expression. These expressions should only occur in the context of
+// splat expressions, and are used represent the receiver of the expression following the splat. It is an error for
+// an anonymous symbol expression to occur outside this context.
 func (b *binder) bindAnonSymbolExpression(syntax *hclsyntax.AnonSymbolExpr) (Expression, hcl.Diagnostics) {
 	var diagnostics hcl.Diagnostics
 
@@ -148,15 +173,19 @@ func (b *binder) bindAnonSymbolExpression(syntax *hclsyntax.AnonSymbolExpr) (Exp
 	}, diagnostics
 }
 
+// bindBinaryOpExpression binds a binary operator expression. If the operands to the binary operator contain eventuals,
+// the result of the binary operator is eventual.
 func (b *binder) bindBinaryOpExpression(syntax *hclsyntax.BinaryOpExpr) (Expression, hcl.Diagnostics) {
 	var diagnostics hcl.Diagnostics
 
+	// Bind the operands.
 	leftOperand, leftDiags := b.bindExpression(syntax.LHS)
 	diagnostics = append(diagnostics, leftDiags...)
 
 	rightOperand, rightDiags := b.bindExpression(syntax.RHS)
 	diagnostics = append(diagnostics, rightDiags...)
 
+	// Compute the signature for the operator and typecheck the arguments.
 	signature := getOperationSignature(syntax.Op)
 	contract.Assert(len(signature.Parameters) == 2)
 
@@ -171,9 +200,19 @@ func (b *binder) bindBinaryOpExpression(syntax *hclsyntax.BinaryOpExpr) (Express
 	}, diagnostics
 }
 
+// bindConditionalExpression binds a conditional expression. The condition expression must be of type bool. The type of
+// the expression is computed as follows:
+// - If the type of the false result is assignable to the type of the true result, the type of the expression is the
+//   type of the true result.
+// - If the type of the true result is assignable to the type of the false result, the type of the expression is the
+//   type of the false result.
+// - If neither type is assignable to the other, the type of the expression is the union of the two types.
+//
+// If the type of the condition is eventual, the type of the expression is eventual.
 func (b *binder) bindConditionalExpression(syntax *hclsyntax.ConditionalExpr) (Expression, hcl.Diagnostics) {
 	var diagnostics hcl.Diagnostics
 
+	// Bind the operands.
 	condition, conditionDiags := b.bindExpression(syntax.Condition)
 	diagnostics = append(diagnostics, conditionDiags...)
 
@@ -183,6 +222,7 @@ func (b *binder) bindConditionalExpression(syntax *hclsyntax.ConditionalExpr) (E
 	falseResult, falseDiags := b.bindExpression(syntax.FalseResult)
 	diagnostics = append(diagnostics, falseDiags...)
 
+	// Compute the type of the result.
 	tff := trueResult.Type().AssignableFrom(falseResult.Type())
 	fft := falseResult.Type().AssignableFrom(trueResult.Type())
 	var resultType Type
@@ -198,6 +238,7 @@ func (b *binder) bindConditionalExpression(syntax *hclsyntax.ConditionalExpr) (E
 		resultType = trueResult.Type()
 	}
 
+	// Typecheck the condition expression.
 	signature := FunctionSignature{Parameters: []Parameter{{Name: "condition", Type: inputType(BoolType)}}}
 	typecheckDiags := typecheckArgs(syntax.Range(), signature, condition)
 	diagnostics = append(diagnostics, typecheckDiags...)
@@ -211,6 +252,7 @@ func (b *binder) bindConditionalExpression(syntax *hclsyntax.ConditionalExpr) (E
 	}, diagnostics
 }
 
+// unwrapIterableSourceType removes any optional or eventual types that wrap a type intended for iteration.
 func unwrapIterableSourceType(t Type) Type {
 	for {
 		switch tt := t.(type) {
@@ -226,6 +268,8 @@ func unwrapIterableSourceType(t Type) Type {
 	}
 }
 
+// wrapIterableSourceType adds optional or eventual types to a type intended for iteration per the structure of the
+// source type.
 func wrapIterableResultType(sourceType, iterableType Type) Type {
 	for {
 		switch t := sourceType.(type) {
@@ -593,7 +637,7 @@ func (b *binder) bindTupleConsExpression(syntax *hclsyntax.TupleConsExpr) (Expre
 	for _, expr := range exprs {
 		if typ == nil {
 			typ = expr.Type()
-		} else if expr.Type() != typ {
+		} else if !typ.AssignableFrom(expr.Type()) {
 			typ = AnyType
 			break
 		}
@@ -606,12 +650,16 @@ func (b *binder) bindTupleConsExpression(syntax *hclsyntax.TupleConsExpr) (Expre
 	}, diagnostics
 }
 
+// bindUnaryOpExpression binds a unary operator expression. If the operand to the unary operator contains eventuals,
+// the result of the unary operator is eventual.
 func (b *binder) bindUnaryOpExpression(syntax *hclsyntax.UnaryOpExpr) (Expression, hcl.Diagnostics) {
 	var diagnostics hcl.Diagnostics
 
+	// Bind the operand.
 	operand, operandDiags := b.bindExpression(syntax.Val)
 	diagnostics = append(diagnostics, operandDiags...)
 
+	// Compute the signature for the operator and typecheck the arguments.
 	signature := getOperationSignature(syntax.Op)
 	contract.Assert(len(signature.Parameters) == 1)
 

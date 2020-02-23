@@ -1,3 +1,17 @@
+// Copyright 2016-2020, Pulumi Corporation.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package model
 
 import (
@@ -21,6 +35,8 @@ type binder struct {
 	root        scope
 }
 
+// BindProgram performs semantic analysis on the given set of HCL2 files that represent a single program. The given
+// host, if any, is used for loading any resource plugins necessary to extract schema information.
 func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnostics, error) {
 	if host == nil {
 		cwd, err := os.Getwd()
@@ -78,6 +94,8 @@ func BindProgram(files []*syntax.File, host plugin.Host) (*Program, hcl.Diagnost
 	}, diagnostics, nil
 }
 
+// declareNodes declares all of the top-level nodes in the given file. This invludes config, resources, outputs, and
+// locals.
 func (b *binder) declareNodes(file *syntax.File) hcl.Diagnostics {
 	var diagnostics hcl.Diagnostics
 
@@ -140,6 +158,8 @@ func (b *binder) declareNodes(file *syntax.File) hcl.Diagnostics {
 	return diagnostics
 }
 
+// declareNode declares a single top-level node. If a node with the same name has already been declared, it returns an
+// appropriate diagnostic.
 func (b *binder) declareNode(name string, n Node) hcl.Diagnostics {
 	if !b.root.define(name, n) {
 		existing, _ := b.root.bindReference(name)
